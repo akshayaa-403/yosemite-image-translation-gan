@@ -1,0 +1,28 @@
+# Default recipe: 128px, the setting the browser demo ships with.
+# On a single T4 this is roughly 3 minutes per epoch (~10 hours for 200 epochs).
+data_root: data/summer2winter_yosemite
+load_size: 143          # 1.12x crop_size, leaving room for the random crop
+crop_size: 128
+batch_size: 4
+num_workers: 4
+
+g_base_channels: 64
+d_base_channels: 64
+n_res_blocks: 6         # 6 is enough at 128px
+
+epochs: 200
+decay_start_epoch: 100  # constant LR for 100 epochs, then linear decay to 0
+lr: 0.0002
+beta1: 0.5
+beta2: 0.999
+lambda_cycle: 10.0
+lambda_identity: 0.5
+buffer_capacity: 50
+amp: true
+
+output_dir: runs/yosemite_128
+seed: 42
+sample_every: 1
+checkpoint_every: 10
+log_every: 50
+device: auto

@@ -1,0 +1,28 @@
+# Sanity run: finishes in a couple of minutes on CPU and proves the whole
+# pipeline works end to end (data -> train -> sample -> checkpoint -> export).
+# Output is meaningless as a translation; it is a plumbing check.
+data_root: data/summer2winter_yosemite
+load_size: 72
+crop_size: 64
+batch_size: 2
+num_workers: 0
+max_train_images: 8
+
+g_base_channels: 16
+d_base_channels: 16
+n_res_blocks: 2
+
+epochs: 2
+decay_start_epoch: 1
+lr: 0.0002
+lambda_cycle: 10.0
+lambda_identity: 0.5
+buffer_capacity: 8
+amp: false
+
+output_dir: runs/smoke
+seed: 0
+sample_every: 1
+checkpoint_every: 1
+log_every: 1
+device: cpu

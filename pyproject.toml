@@ -1,0 +1,48 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "yosemite-cyclegan"
+version = "0.2.0"
+description = "CycleGAN for unpaired summer <-> winter translation on Yosemite photographs"
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.10"
+dependencies = [
+    "torch>=2.1",
+    "torchvision>=0.16",
+    "numpy>=1.24",
+    "pillow>=10.0",
+    "pyyaml>=6.0",
+    "scikit-image>=0.22",
+]
+
+[project.optional-dependencies]
+# Metrics beyond cycle consistency.
+metrics = ["torchmetrics>=1.2"]
+# Exporting and verifying the models the browser demo runs.
+export = ["onnx>=1.15", "onnxruntime>=1.17"]
+# Downloading the dataset from Kaggle.
+data = ["kaggle>=1.6"]
+dev = ["pytest>=8.0", "ruff>=0.4"]
+
+[project.urls]
+Homepage = "https://github.com/akshayaa-403/yosemite-image-translation-gan"
+Demo = "https://akshayaa-403.github.io/yosemite-image-translation-gan/"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src", "."]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 110
+target-version = "py310"
+src = ["src", "scripts", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]

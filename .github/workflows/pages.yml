@@ -1,0 +1,49 @@
+name: Deploy demo to GitHub Pages
+
+# Publishes the static docs/ folder. Nothing is built or trained here -- the
+# ONNX models are committed by scripts/export_onnx.py and served as-is.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/**"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Let a newer push cancel an in-flight deploy, but never interrupt a running one
+# halfway through publishing.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - name: Warn if no models are published
+        run: |
+          if [ ! -f docs/models/manifest.json ]; then
+            echo "::warning::docs/models/manifest.json is missing - the demo will render its setup instructions instead of running a model."
+          else
+            echo "Publishing models:"
+            cat docs/models/manifest.json
+          fi
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs
+      - id: deployment
+        uses: actions/deploy-pages@v4

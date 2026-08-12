@@ -1,5 +1,13 @@
-torch
-torchvision
-matplotlib
-numpy
-scikit-image
+# Core training and inference.
+torch>=2.1
+torchvision>=0.16
+numpy>=1.24
+pillow>=10.0
+pyyaml>=6.0
+scikit-image>=0.22
+
+# Optional extras, installed with the features that need them:
+#   pip install torchmetrics          # FID in scripts/evaluate.py --fid
+#   pip install onnx onnxruntime      # scripts/export_onnx.py
+#   pip install kaggle                # scripts/prepare_data.py --source kaggle
+#   pip install pytest ruff           # tests and linting
