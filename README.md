@@ -46,6 +46,7 @@ usually gets wrong:
 src/cyclegan/         generator, discriminator, losses, data, buffer, trainer, metrics
 scripts/              prepare_data · train · evaluate · translate · export_onnx · make_demo_assets
 configs/              yosemite_128 (default) · yosemite_256 · smoke (2-minute CPU sanity run)
+notebooks/            train_and_export.ipynb — dataset to published weights on Colab
 docs/                 the GitHub Pages demo (static, no backend)
 tests/                64 tests, CPU-only, seconds to run
 ```
@@ -127,8 +128,21 @@ python scripts/translate.py --checkpoint runs/.../latest.pt --input photo.jpg --
 
 ## The browser demo
 
-`docs/` is a static page that runs the generator client-side with ONNX Runtime
-Web (WebGPU where available, WebAssembly otherwise) — no server, no uploads.
+`docs/` is a static page: **upload a landscape photo, get it back translated**, with
+a draggable divider between the two. The generator runs client-side through ONNX
+Runtime Web (WebGPU where available, WebAssembly otherwise) — nothing is uploaded,
+which is also why the page needs no backend.
+
+### Publishing weights
+
+The page needs exported weights before it can translate anything. Easiest route is
+the notebook, which does the whole chain on a free Colab GPU and hands you a zip to
+unpack into the repo:
+
+**[`notebooks/train_and_export.ipynb`](notebooks/train_and_export.ipynb)** — upload
+your Kaggle token, Runtime → Run all, ~3 hours on a T4 for 60 epochs.
+
+Or locally, if you have the dataset and a GPU:
 
 ```bash
 python scripts/export_onnx.py --checkpoint runs/yosemite_128/checkpoints/latest.pt
@@ -136,13 +150,27 @@ python scripts/make_demo_assets.py --checkpoint runs/yosemite_128/checkpoints/la
 python -m http.server -d docs 8000        # preview at http://localhost:8000
 ```
 
-Then enable Pages once (**Settings → Pages → Source: GitHub Actions**); pushes
-touching `docs/` deploy via `.github/workflows/pages.yml`. Until weights are
-exported and committed, the page renders setup instructions instead of a broken
-model — so it is safe to publish before training finishes.
+Enable Pages once (**Settings → Pages → Source: GitHub Actions**); pushes touching
+`docs/` then deploy via `.github/workflows/pages.yml`.
 
-Watch the payload size: float32 weights are ~31MB per direction. See
-[`docs/models/README.md`](docs/models/README.md) for how to shrink them.
+Until weights exist the page still accepts an image and displays it, alongside a
+note saying there is no model to run it through — it never fabricates an output.
+
+### Payload size
+
+Float32 weights are ~31MB per direction at the default 64 base channels, so both
+directions are a ~62MB download for every visitor. Training with
+`--g-base-channels 32` gives ~8MB each and still looks decent at 128px; failing
+that, `export_onnx.py --quantize` cuts float32 to int8. See
+[`docs/models/README.md`](docs/models/README.md).
+
+### Accessibility
+
+Light and dark themes (following the OS preference until you pick one), a skip
+link, visible focus rings, a keyboard-operable comparison divider (`←`/`→`, `Home`,
+`End`) exposed as an ARIA slider, labelled controls, `aria-live` status messages,
+and support for `prefers-reduced-motion` and `prefers-contrast: more`. Both
+palettes meet WCAG AA contrast for body and secondary text.
 
 ## Tests
 

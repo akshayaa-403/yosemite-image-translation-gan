@@ -5,54 +5,58 @@
  * docs/models/, executed with ONNX Runtime Web, and the result is drawn onto a
  * canvas. No image ever leaves the machine, which is also why the page works
  * unchanged on GitHub Pages with no backend at all.
+ *
+ * The image and the model are deliberately decoupled: choosing a photo always
+ * shows it, whether or not weights have been published, so a visitor sees their
+ * own picture plus an honest explanation rather than a dead page.
  */
 (() => {
   'use strict';
 
   const MODELS_URL = 'models/manifest.json';
   const SAMPLES_URL = 'samples/manifest.json';
+  /** Fallback display size when no model has declared its input resolution. */
+  const DEFAULT_SIZE = 128;
 
   const state = {
-    inputSize: 128,
+    inputSize: DEFAULT_SIZE,
     /** direction -> { file, session|null, loading:Promise|null } */
     models: new Map(),
     direction: 'summer2winter',
-    /** The currently loaded source image, as an ImageBitmap or HTMLImageElement. */
+    /** The currently loaded source image (ImageBitmap). */
     source: null,
     backend: null,
     busy: false,
   };
 
   const el = {};
-  const ids = [
-    'app', 'noModels', 'status', 'fileInput', 'dropZone', 'directionToggle',
-    'backendLabel', 'result', 'beforeCanvas', 'afterCanvas', 'afterClip',
-    'compare', 'handle', 'timing', 'downloadBtn', 'samples', 'sampleStrip',
-    'randomSampleBtn', 'afterBadge',
-  ];
+  const ELEMENTS = {
+    noModels: 'noModels', status: 'status', fileInput: 'fileInput', dropZone: 'dropZone',
+    directionToggle: 'directionToggle', result: 'result', beforeCanvas: 'beforeCanvas',
+    afterCanvas: 'afterCanvas', afterClip: 'afterClip', compare: 'compare', handle: 'handle',
+    timing: 'timing', downloadBtn: 'downloadBtn', samples: 'samples',
+    randomSampleBtn: 'randomSampleBtn', afterBadge: 'afterBadge',
+  };
 
-  // ---------------------------------------------------------------- status
   function setStatus(message, { error = false, busy = false } = {}) {
     el.status.classList.toggle('error', error);
-    el.status.innerHTML = busy ? `<span class="spinner"></span>${message}` : message;
+    el.status.innerHTML = busy ? `<span class="spinner" aria-hidden="true"></span>${message}` : message;
   }
 
   // ---------------------------------------------------------------- models
   async function loadManifest() {
     // A 404 here is the expected state before any model has been trained and
     // committed, so it gets its own explanatory panel rather than an error.
-    let response;
     try {
-      response = await fetch(MODELS_URL, { cache: 'no-cache' });
+      const response = await fetch(MODELS_URL, { cache: 'no-cache' });
+      return response.ok ? await response.json() : null;
     } catch {
       return null;
     }
-    if (!response.ok) return null;
-    try {
-      return await response.json();
-    } catch {
-      return null;
-    }
+  }
+
+  function hasModel(direction) {
+    return state.models.has(direction);
   }
 
   /** Load (once) and return the ORT session for a direction. */
@@ -61,9 +65,8 @@
     if (!entry) return Promise.reject(new Error(`No model published for ${direction}`));
     if (entry.session) return Promise.resolve(entry.session);
     if (!entry.loading) {
-      const url = `models/${entry.file}`;
       entry.loading = ort.InferenceSession
-        .create(url, {
+        .create(`models/${entry.file}`, {
           // WebGPU when the browser has it, WASM everywhere else. Both run the
           // same graph; WebGPU is roughly an order of magnitude faster.
           executionProviders: navigator.gpu ? ['webgpu', 'wasm'] : ['wasm'],
@@ -72,7 +75,6 @@
         .then((session) => {
           entry.session = session;
           state.backend = navigator.gpu ? 'WebGPU' : 'WebAssembly';
-          el.backendLabel.textContent = state.backend;
           return session;
         })
         .catch((err) => {
@@ -127,12 +129,35 @@
     canvas.getContext('2d').putImageData(image, 0, 0);
   }
 
+  /** Draw the source into both layers at the model's aspect ratio. */
+  function drawSource() {
+    const size = state.inputSize;
+    for (const canvas of [el.beforeCanvas, el.afterCanvas]) {
+      canvas.width = size;
+      canvas.height = size;
+      canvas.getContext('2d').drawImage(state.source, 0, 0, size, size);
+    }
+  }
+
   // --------------------------------------------------------------- running
   async function translate() {
     if (!state.source || state.busy) return;
-    state.busy = true;
+
     const label = state.direction === 'summer2winter' ? 'summer → winter' : 'winter → summer';
 
+    // Show the photo first, always. Without weights that is all we honestly have.
+    drawSource();
+    el.result.hidden = false;
+    setPosition(50);
+
+    if (!hasModel(state.direction)) {
+      el.afterBadge.textContent = 'no model';
+      el.timing.textContent = 'showing your image only';
+      setStatus(`No published weights for ${label} — see the note below.`);
+      return;
+    }
+
+    state.busy = true;
     try {
       setStatus(`Loading the ${label} model…`, { busy: true });
       const session = await getSession(state.direction);
@@ -148,8 +173,6 @@
       const elapsed = performance.now() - started;
 
       tensorToCanvas(output[session.outputNames[0]], el.afterCanvas);
-      drawSource();
-      el.result.hidden = false;
       el.afterBadge.textContent = state.direction === 'summer2winter' ? 'winter' : 'summer';
       el.timing.textContent =
         `${Math.round(elapsed)} ms · ${state.inputSize}×${state.inputSize} · ${state.backend}`;
@@ -163,21 +186,14 @@
     }
   }
 
-  /** Draw the original at the model's aspect ratio so both layers line up. */
-  function drawSource() {
-    const size = state.inputSize;
-    el.beforeCanvas.width = size;
-    el.beforeCanvas.height = size;
-    el.beforeCanvas.getContext('2d').drawImage(state.source, 0, 0, size, size);
-  }
-
-  async function useImageSource(blobOrUrl) {
+  async function useImageSource(blobOrUrl, label) {
     try {
       setStatus('Reading image…', { busy: true });
       const blob = typeof blobOrUrl === 'string'
         ? await (await fetch(blobOrUrl)).blob()
         : blobOrUrl;
       state.source = await createImageBitmap(blob);
+      if (label) el.dropZone.dataset.file = label;
       await translate();
     } catch (err) {
       console.error(err);
@@ -190,7 +206,7 @@
     const clamped = Math.max(0, Math.min(100, percent));
     el.afterClip.style.width = `${clamped}%`;
     el.handle.style.left = `${clamped}%`;
-    el.handle.setAttribute('aria-valuenow', Math.round(clamped));
+    el.handle.setAttribute('aria-valuenow', String(Math.round(clamped)));
     // The clipped canvas must stay the width of the *container*, not the clip,
     // or the two halves would show different scales of the same image.
     el.afterCanvas.style.width = `${el.compare.clientWidth}px`;
@@ -221,6 +237,8 @@
       const step = event.shiftKey ? 10 : 2;
       if (event.key === 'ArrowLeft') setPosition(current - step);
       else if (event.key === 'ArrowRight') setPosition(current + step);
+      else if (event.key === 'Home') setPosition(0);
+      else if (event.key === 'End') setPosition(100);
       else return;
       event.preventDefault();
     });
@@ -242,32 +260,30 @@
     if (!list.length) return;
 
     for (const name of list) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.setAttribute('aria-label', `Sample photo ${name}`);
       const thumb = new Image();
       thumb.src = `samples/${name}`;
-      thumb.alt = `Sample photo ${name}`;
-      thumb.tabIndex = 0;
+      thumb.alt = '';
       thumb.loading = 'lazy';
-      const pick = () => useImageSource(`samples/${name}`);
-      thumb.addEventListener('click', pick);
-      thumb.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(); }
-      });
-      el.sampleStrip.appendChild(thumb);
+      button.appendChild(thumb);
+      button.addEventListener('click', () => useImageSource(`samples/${name}`, name));
+      el.samples.appendChild(button);
     }
     el.samples.hidden = false;
     el.randomSampleBtn.hidden = false;
     el.randomSampleBtn.addEventListener('click', () => {
-      useImageSource(`samples/${list[Math.floor(Math.random() * list.length)]}`);
+      const pick = list[Math.floor(Math.random() * list.length)];
+      useImageSource(`samples/${pick}`, pick);
     });
-    // Start with something on screen rather than an empty page.
-    useImageSource(`samples/${list[0]}`);
   }
 
   // ------------------------------------------------------------------ init
   function initInputs() {
     el.fileInput.addEventListener('change', (event) => {
       const [file] = event.target.files;
-      if (file) useImageSource(file);
+      if (file) useImageSource(file, file.name);
     });
 
     for (const type of ['dragenter', 'dragover']) {
@@ -284,7 +300,7 @@
     }
     el.dropZone.addEventListener('drop', (event) => {
       const file = event.dataTransfer?.files?.[0];
-      if (file && file.type.startsWith('image/')) useImageSource(file);
+      if (file && file.type.startsWith('image/')) useImageSource(file, file.name);
       else setStatus('That does not look like an image file.', { error: true });
     });
 
@@ -313,40 +329,43 @@
   }
 
   async function init() {
-    for (const id of ids) el[id] = document.getElementById(id);
+    for (const [key, id] of Object.entries(ELEMENTS)) el[key] = document.getElementById(id);
 
-    const manifest = await loadManifest();
-    if (!manifest || !manifest.models?.length) {
-      el.noModels.hidden = false;
-      return;
-    }
-
-    state.inputSize = manifest.input_size || 128;
-    for (const model of manifest.models) state.models.set(model.direction, { ...model, session: null, loading: null });
-
-    // Offer only the directions that were actually exported.
-    for (const button of el.directionToggle.querySelectorAll('button')) {
-      if (!state.models.has(button.dataset.direction)) button.remove();
-    }
-    const first = el.directionToggle.querySelector('button');
-    if (first) {
-      state.direction = first.dataset.direction;
-      first.classList.add('active');
-      first.setAttribute('aria-checked', 'true');
-    }
-
-    el.app.hidden = false;
-    el.backendLabel.textContent = navigator.gpu ? 'WebGPU (on first run)' : 'WebAssembly';
     initInputs();
     initCompare();
-    setStatus('Pick a photo to translate.');
+
+    const manifest = await loadManifest();
+    if (manifest?.models?.length) {
+      state.inputSize = manifest.input_size || DEFAULT_SIZE;
+      for (const model of manifest.models) {
+        state.models.set(model.direction, { ...model, session: null, loading: null });
+      }
+      // Offer only the directions that were actually exported.
+      for (const button of el.directionToggle.querySelectorAll('button')) {
+        if (!hasModel(button.dataset.direction)) button.remove();
+      }
+      const first = el.directionToggle.querySelector('button');
+      if (first) {
+        state.direction = first.dataset.direction;
+        first.classList.add('active');
+        first.setAttribute('aria-checked', 'true');
+      }
+      setStatus('Choose a photo to translate.');
+    } else {
+      // No weights: the upload path still works and shows the photo.
+      el.noModels.hidden = false;
+      setStatus('Choose a photo — it will display, but there is no model to run it through yet.');
+    }
+
     await initSamples();
   }
 
   if (typeof ort === 'undefined') {
     document.getElementById('status').textContent =
       'ONNX Runtime failed to load — check your network connection and reload.';
-  } else {
+  } else if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
   }
 })();

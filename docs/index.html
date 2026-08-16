@@ -1,125 +1,118 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Yosemite CycleGAN — summer ↔ winter in your browser</title>
-<meta name="description" content="Run a CycleGAN summer/winter image translator entirely client-side with ONNX Runtime Web. No upload, no server.">
+<meta name="description" content="Upload a landscape photo and turn summer into winter (or back) with a CycleGAN running entirely client-side via ONNX Runtime Web. Nothing is uploaded.">
 <meta name="color-scheme" content="dark light">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏔️</text></svg>">
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
 
+<a class="skip-link" href="#result">Skip to result</a>
+
 <header class="site-header">
-  <div class="wrap">
-    <h1>Yosemite CycleGAN</h1>
-    <p class="tagline">
-      Unpaired summer&nbsp;↔&nbsp;winter translation, running <strong>entirely in this tab</strong>.
-      Your photo is never uploaded — the network weights are downloaded to you instead.
-    </p>
-    <p class="links">
-      <a href="https://github.com/akshayaa-403/yosemite-image-translation-gan">Source</a>
-      <a href="https://arxiv.org/abs/1703.10593">CycleGAN paper</a>
-      <a href="https://www.kaggle.com/datasets/balraj98/summer2winter-yosemite">Dataset</a>
-    </p>
+  <div class="wrap header-row">
+    <div class="header-text">
+      <h1>Yosemite CycleGAN</h1>
+      <p class="tagline">
+        Drop in a landscape photo and this page turns summer into winter, or winter
+        into summer, using a CycleGAN trained on unpaired Yosemite photographs — the
+        network runs in this tab, so your picture never leaves the machine.
+      </p>
+    </div>
+    <div class="header-actions">
+      <button type="button" class="icon-button" id="themeToggle" aria-label="Switch to light theme">
+        <span class="theme-icon" aria-hidden="true">☀</span>
+      </button>
+      <a class="text-link" href="https://github.com/akshayaa-403/yosemite-image-translation-gan">Source ↗</a>
+    </div>
   </div>
 </header>
 
 <main class="wrap">
 
-  <!-- Shown when docs/models/manifest.json is missing, i.e. no weights published yet -->
-  <section id="noModels" class="panel notice" hidden>
-    <h2>No published weights yet</h2>
-    <p>This page loads ONNX models from <code>docs/models/</code>. Nothing is there yet, so there is nothing to run. To publish a trained model:</p>
-    <pre><code>python scripts/prepare_data.py --source kaggle
-python scripts/train.py --config configs/yosemite_128.yaml
-python scripts/export_onnx.py --checkpoint runs/yosemite_128/checkpoints/latest.pt</code></pre>
-    <p>Commit the generated <code>docs/models/</code> folder and this page starts working — locally too, via <code>python -m http.server -d docs 8000</code>.</p>
-  </section>
-
-  <section id="app" hidden>
-    <div class="panel controls">
-      <div class="control-group">
-        <span class="label">Direction</span>
+  <!-- ── Pick an image: first thing, because a demo with no input shows nothing ── -->
+  <section class="panel" aria-labelledby="sourceHeading">
+    <div class="panel-head">
+      <h2 id="sourceHeading" class="panel-title">Your image</h2>
+      <div class="panel-actions">
         <div class="segmented" id="directionToggle" role="radiogroup" aria-label="Translation direction">
           <button type="button" role="radio" data-direction="summer2winter" aria-checked="true" class="active">Summer → Winter</button>
           <button type="button" role="radio" data-direction="winter2summer" aria-checked="false">Winter → Summer</button>
         </div>
       </div>
-
-      <div class="control-group">
-        <span class="label">Image</span>
-        <div class="buttons">
-          <label class="button" for="fileInput">Choose a photo…</label>
-          <input type="file" id="fileInput" accept="image/*" hidden>
-          <button type="button" class="button ghost" id="randomSampleBtn" hidden>Random sample</button>
-        </div>
-      </div>
-
-      <div class="control-group">
-        <span class="label">Backend</span>
-        <output class="value" id="backendLabel">detecting…</output>
-      </div>
     </div>
 
-    <div id="dropZone" class="panel dropzone">
-      <p><strong>Drop a photo here</strong> or use the button above.</p>
-      <p class="hint">Landscapes work best — that is all the model has ever seen.</p>
+    <div id="dropZone" class="dropzone">
+      <label class="button" for="fileInput">Choose a photo…</label>
+      <input type="file" id="fileInput" accept="image/*" class="visually-hidden">
+      <button type="button" class="button ghost" id="randomSampleBtn" hidden>Try a sample</button>
+      <p class="hint">Or drag one here. Landscapes work best — that is all the model has seen.</p>
     </div>
 
-    <div id="samples" class="samples" hidden>
-      <span class="label">Samples</span>
-      <div class="sample-strip" id="sampleStrip"></div>
-    </div>
-
-    <div id="result" class="panel result" hidden>
-      <div class="compare" id="compare">
-        <canvas id="beforeCanvas" class="layer"></canvas>
-        <div class="after-clip" id="afterClip">
-          <canvas id="afterCanvas" class="layer"></canvas>
-        </div>
-        <div class="handle" id="handle" role="slider" tabindex="0"
-             aria-label="Comparison position" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50">
-          <span class="grip"></span>
-        </div>
-        <span class="badge left">original</span>
-        <span class="badge right" id="afterBadge">translated</span>
-      </div>
-      <div class="result-footer">
-        <span id="timing" class="value"></span>
-        <button type="button" class="button ghost" id="downloadBtn">Download result</button>
-      </div>
-    </div>
-
-    <div id="status" class="status" role="status" aria-live="polite"></div>
+    <div id="samples" class="sample-strip" role="group" aria-label="Sample photos" hidden></div>
   </section>
 
-  <section class="panel about">
-    <h2>What you are looking at</h2>
-    <p>
-      Two generators are trained on <em>unpaired</em> photographs: a pile of summer shots of Yosemite and a
-      separate pile of winter shots, with no correspondence between them. Nothing in the data says what any
-      given summer photo should look like in winter. What holds the translation together is the cycle
-      constraint — summer&nbsp;→&nbsp;winter&nbsp;→&nbsp;summer has to return the image you started with —
-      so the network learns a reversible change of season rather than a plausible but unrelated winter scene.
-    </p>
-    <p>
-      The model here is the generator only (the discriminators are training scaffolding), exported to ONNX and
-      executed by <a href="https://onnxruntime.ai/docs/tutorials/web/">ONNX Runtime Web</a> through WebGPU where
-      available and WebAssembly otherwise. Expect a slightly washed-out look: it runs at the resolution it was
-      trained at and the result is scaled back up to your image's size.
-    </p>
+  <!-- ── Result ─────────────────────────────────────────────────────────── -->
+  <section id="result" class="results" aria-labelledby="resultHeading" hidden>
+    <div class="results-head">
+      <h2 id="resultHeading" class="panel-title">Result</h2>
+      <p class="source-line" id="timing"></p>
+    </div>
+
+    <div class="compare" id="compare">
+      <canvas id="beforeCanvas" class="layer" role="img" aria-label="Your original photo"></canvas>
+      <div class="after-clip" id="afterClip">
+        <canvas id="afterCanvas" class="layer" role="img" aria-label="The translated photo"></canvas>
+      </div>
+      <div class="handle" id="handle" role="slider" tabindex="0"
+           aria-label="Reveal the translated image" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50">
+        <span class="grip" aria-hidden="true"></span>
+      </div>
+      <span class="badge left" aria-hidden="true">original</span>
+      <span class="badge right" id="afterBadge" aria-hidden="true">translated</span>
+    </div>
+
+    <div class="results-foot">
+      <p class="hint">Drag the divider, or focus it and use ← / →.</p>
+      <button type="button" class="button ghost" id="downloadBtn">Download result</button>
+    </div>
   </section>
+
+  <!-- Shown when docs/models/ has no weights yet -->
+  <section id="noModels" class="panel notice" hidden>
+    <h2>No trained weights published yet</h2>
+    <p>
+      Your photo still loads and displays above, but there is no model to run it
+      through: this page reads ONNX files from <code>docs/models/</code> and that
+      folder is empty. The fastest way to fill it is the Colab notebook in the repo
+      (<code>notebooks/train_and_export.ipynb</code>) — it downloads the dataset,
+      trains, exports both directions, and hands you the two files to commit.
+    </p>
+    <pre><code>python scripts/prepare_data.py --source kaggle
+python scripts/train.py --config configs/yosemite_128.yaml
+python scripts/export_onnx.py --checkpoint runs/yosemite_128/checkpoints/latest.pt --quantize</code></pre>
+  </section>
+
+  <p class="status" id="status" role="status" aria-live="polite"></p>
+
+  <p class="footnote">
+    Two generators are trained on unpaired photographs — a pile of summer shots and a
+    separate pile of winter ones, with no correspondence between them. The cycle
+    constraint (summer&nbsp;→&nbsp;winter&nbsp;→&nbsp;summer must return your image) is
+    what ties the output to your photo rather than to some plausible unrelated winter
+    scene. Architecture, training recipe and metrics are in the
+    <a href="https://github.com/akshayaa-403/yosemite-image-translation-gan#readme">README</a>;
+    execution is <a href="https://onnxruntime.ai/docs/tutorials/web/">ONNX Runtime Web</a>
+    on WebGPU where available, WebAssembly otherwise.
+  </p>
 </main>
 
-<footer class="site-footer">
-  <div class="wrap">
-    <p>MIT licensed. Trained on the summer2winter_yosemite dataset from the CycleGAN authors.</p>
-  </div>
-</footer>
-
 <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.21.0/dist/ort.min.js"></script>
+<script src="theme.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
